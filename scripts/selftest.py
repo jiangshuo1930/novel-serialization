@@ -1451,6 +1451,47 @@ def main() -> int:
         check("显式路径不会触发路径回退",
               "已按项目布局改用" not in out_new, out_new.splitlines()[:3])
 
+    print("[35] 白名单默认自动加载（约定路径上的豁免不能被静默无视）")
+    # 以前不带 --allow 就静默无视 state/连续性白名单.md，于是刻意回声被报成"必须改"。
+    # 约定路径上明明躺着作者的豁免记录，却要靠人每条命令都记得加 flag —— 与 B038 同一形状。
+    with tempfile.TemporaryDirectory() as tmp:
+        wroot = Path(tmp) / "novel"
+        for sub in ("chapters", "plot", "state", "world", "characters", "outline"):
+            (wroot / sub).mkdir(parents=True)
+        echo = "他说这事得照章办"
+        (wroot / "chapters" / "第1章-甲.md").write_text(
+            f"他站在门口看了一眼。\n\n{echo}。\n\n他往前走了一步。\n", encoding="utf-8")
+        (wroot / "chapters" / "第2章-乙.md").write_text(
+            f"她又问了一遍。\n\n{echo}。\n\n她把门关上了。\n", encoding="utf-8")
+        (wroot / "state" / "连续性白名单.md").write_text("# 白名单\n\n" + echo + "\n",
+                                                         encoding="utf-8")
+
+        buf_a = io.StringIO()
+        with contextlib.redirect_stdout(buf_a):
+            continuity_check.main(["--novel", str(wroot)])
+        out_auto = buf_a.getvalue()
+        check("不带 --allow 也会自动加载 state/连续性白名单.md",
+              "已自动加载白名单" in out_auto, out_auto.splitlines()[:4])
+        check("自动加载后刻意回声不再报必须改",
+              "跨章逐字重复" not in out_auto, out_auto[-320:])
+
+        buf_b = io.StringIO()
+        with contextlib.redirect_stdout(buf_b):
+            continuity_check.main(["--novel", str(wroot), "--no-allow"])
+        out_no = buf_b.getvalue()
+        check("--no-allow 时刻意回声照旧报出来（守卫没被关掉）",
+              "跨章逐字重复" in out_no, out_no[-320:])
+
+        err_c = io.StringIO()
+        buf_c = io.StringIO()
+        with contextlib.redirect_stdout(buf_c), contextlib.redirect_stderr(err_c):
+            continuity_check.main(["--novel", str(wroot),
+                                   "--allow", str(wroot / "state" / "不存在.md")])
+        check("--allow 指了不存在的文件会明说警告",
+              "白名单不存在" in err_c.getvalue(), err_c.getvalue()[:200])
+        check("这一轮不许假装有豁免（该报的还要报）",
+              "跨章逐字重复" in buf_c.getvalue(), buf_c.getvalue()[-320:])
+
     print()
     if failures:
         print(f"自检失败：{len(failures)}/{checks} 项未通过")

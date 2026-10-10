@@ -462,6 +462,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="跨章一致性核对")
     ap.add_argument("--novel", default="novel", help="novel/ 目录，默认 ./novel")
     ap.add_argument("--allow", default=None, help="刻意回声白名单文件（一行一条）")
+    ap.add_argument("--no-allow", action="store_true",
+                    help="完全不加载白名单（包括 state/连续性白名单.md 的自动加载）")
     ap.add_argument("--write-allowlist", action="store_true",
                     help="只生成白名单骨架，不检查")
     ap.add_argument("--force", action="store_true",
@@ -499,7 +501,26 @@ def main(argv: list[str] | None = None) -> int:
         print(f"已写出白名单骨架：{out}")
         return 0
 
-    allow = load_allowlist(Path(args.allow)) if args.allow else set()
+    # 白名单：默认自动加载 `state/连续性白名单.md`。
+    # 为什么改成自动加载：以前不带 --allow 就**静默无视**白名单，于是刻意回声
+    # 被报成"必须改"（假阳性），而人只会看到一条不该出现的告警。约定路径上
+    # 明明躺着作者的豁免记录，却要每一条命令都靠人记得加一个 flag——和 B038 同一形状。
+    allow_path = Path(args.allow) if args.allow else (root / "state" / "连续性白名单.md")
+    if args.no_allow:
+        if args.allow:
+            print("提示：--no-allow 与 --allow 同时给了，按 --no-allow 处理（本轮不加载白名单）")
+        allow_path = None
+    allow: set[str] = set()
+    if allow_path is not None:
+        if allow_path.is_file():
+            allow = load_allowlist(allow_path)
+            if not args.allow:
+                print(f"提示：已自动加载白名单 {allow_path}（{len(allow)} 条）。"
+                      f"要指定别的文件用 --allow，要完全关掉用 --no-allow")
+        elif args.allow:
+            # 显式指了路径却读不到：不能装作查过了（B038 的教训）
+            print(f"警告：--allow 指定的白名单不存在：{allow_path}"
+                  f"（本轮没有任何豁免生效）", file=sys.stderr)
     sents_by_ch = {ch: split_sentences(chapters[ch][1]) for ch in chapters}
 
     hard: list[str] = []
