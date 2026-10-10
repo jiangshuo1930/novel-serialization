@@ -94,6 +94,18 @@ def strip_norm(s: str) -> str:
     return "".join(ch for ch in s if ch not in PUNCT_SET)
 
 
+def strip_frontmatter(text: str) -> str:
+    """剥离文件顶部 `---` 包裹的 front-matter。
+
+    章节/节点文件的 front-matter 是结构元数据（span/gap/hook_type/characters 等
+    枚举字段值），跨章原句重复检测只针对**正文句子**——元数据值天然会在多章重复
+    （"span:一天""hook_type:反转"），不剥离会把结构性重复误报成"必须改"。
+    B050：江城一中的《校花好感度归零》第 11-20 章每章都被报 4-6 条假阳性。
+    """
+    m = re.match(r"^---\n.*?\n---\n?", text, re.S)
+    return text[m.end():] if m else text
+
+
 def content_lines(text: str) -> list[str]:
     return [l.strip() for l in text.splitlines() if l.strip() and not l.startswith("#")]
 
@@ -532,7 +544,7 @@ def main(argv: list[str] | None = None) -> int:
             # 显式指了路径却读不到：不能装作查过了（B038 的教训）
             print(f"警告：--allow 指定的白名单不存在：{allow_path}"
                   f"（本轮没有任何豁免生效）", file=sys.stderr)
-    sents_by_ch = {ch: split_sentences(chapters[ch][1]) for ch in chapters}
+    sents_by_ch = {ch: split_sentences(strip_frontmatter(chapters[ch][1])) for ch in chapters}
 
     hard: list[str] = []
     soft: list[str] = []

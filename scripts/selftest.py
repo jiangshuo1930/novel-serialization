@@ -462,6 +462,23 @@ def main() -> int:
               any("小指缺一节" in x for x in h7), f"{h7}")
         check("已落地的那条不误报", not any("黑眼圈" in x for x in h7), f"{h7}")
 
+        # 回归（B050）：front-matter 元数据枚举值不得报跨章重复
+        # 症状：《校花好感度归零》第 11-20 章每章被报 4-6 条"span:一天/gap:2天/
+        # hook_type:反转"假阳性——章节文件顶部 front-matter 是结构元数据，
+        # 枚举值天然多章重复，不应参与正文句子重复检测。
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            _td = Path(td)
+            for i, fm in enumerate(("span:一天\nhook_type:反转", "span:一天\nhook_type:反转")):
+                (_td / f"第{i+1}章-测试.md").write_text(
+                    f"---\nchapter: {i+1}\n{fm}\n---\n\n正文第{i+1}章，各自不同。",
+                    encoding="utf-8")
+            _ch = continuity_check.load_chapters(_td)
+            _sents = {c: continuity_check.split_sentences(
+                continuity_check.strip_frontmatter(_ch[c][1])) for c in _ch}
+            _h, _ = continuity_check.check_cross_chapter(_sents, set())
+            check("B050: front-matter 枚举值不报跨章重复", not _h, f"{_h}")
+
         # 回归（技能 bug）：卷纲**模板自带**的 markdown 表头分隔行 `| --- | --- |`
         # 的第一格 "---" 会命中章号正则 `[\d\-]+`（那是为了容忍 "1-3" 这类章号区间），
         # 于是整行被当成数据行，每份照模板写的卷纲都会报一条假的
