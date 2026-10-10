@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+# 索引是生成的二进制缓存（原文永远权威、可随时重建）
+*.db
+*.db.tmp
+*.db-journal
+*.db-wal
+*.db-shm
+# 密钥绝不进仓库
+.env
+*.key
+*密钥*
