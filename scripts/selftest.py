@@ -867,6 +867,13 @@ def main() -> int:
     claimed_refs = {int(m) for m in re.findall(r"(\d+)\s*份参考", ridx)}
     check(f"README 写的 references 份数与实际一致（{n_refs} 份）",
           claimed_refs == {n_refs}, f"文档写 {sorted(claimed_refs)}，实际 {n_refs}")
+    # 台账编号唯一性：同一个号被用两次，"这个坑又来了"的判断就失效了。
+    # 真实发生过两次：B035 被用了两次（brief / 写前工具要求正文已存在）；
+    # 同日并行提交又出现两条都叫 B041。撞号必须被机器挡住，不能靠人眼翻几千行。
+    log_text = (SKILL_DIR / "references" / "skill-changelog.md").read_text(encoding="utf-8")
+    log_ids = re.findall(r"^### (B\d+)", log_text, re.M)
+    dup_ids = sorted({x for x in log_ids if log_ids.count(x) > 1})
+    check(f"台账条目编号唯一（共 {len(log_ids)} 条）", not dup_ids, f"重复编号：{dup_ids}")
 
     print("[23] 改稿护栏 / 章节号污染 / 伏笔「最近推进章」（口径借鉴 InkOS）")
 
