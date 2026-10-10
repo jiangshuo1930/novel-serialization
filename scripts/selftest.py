@@ -442,6 +442,30 @@ def main() -> int:
               any("小指缺一节" in x for x in h7), f"{h7}")
         check("已落地的那条不误报", not any("黑眼圈" in x for x in h7), f"{h7}")
 
+        # 回归（技能 bug）：卷纲**模板自带**的 markdown 表头分隔行 `| --- | --- |`
+        # 的第一格 "---" 会命中章号正则 `[\d\-]+`（那是为了容忍 "1-3" 这类章号区间），
+        # 于是整行被当成数据行，每份照模板写的卷纲都会报一条假的
+        # 「状态列写了「---」」必须改。实测：《本侯想告老还乡》第 1 卷卷纲中招。
+        (root / "outline" / "卷纲-第1卷.md").write_text(
+            "## 本卷章表\n\n| 章号 | 标题 | beat | 钩子类型 | 状态 |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 1 | 甲 | x | 悬念 | done |\n"
+            "| 2 | 乙 | x | 危机 | draft |\n",
+            encoding="utf-8")
+        hv_sep, _ = continuity_check.check_volume_outline(root)
+        check("卷纲表头分隔行不再被当成数据行（照模板写 = 零误报）",
+              not any("状态列" in x or "不在允许取值" in x for x in hv_sep), f"{hv_sep}")
+        check("合法状态值一个都不报（done/draft 均放行）", hv_sep == [], f"{hv_sep}")
+        # 反向：非法值仍要抓到，别把分隔行过滤做成了"整列不查"
+        (root / "outline" / "卷纲-第1卷.md").write_text(
+            "## 本卷章表\n\n| 章号 | 标题 | beat | 钩子类型 | 状态 |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 1 | 甲 | x | 悬念 | done（第 2 章也 done） |\n",
+            encoding="utf-8")
+        hv_bad, _ = continuity_check.check_volume_outline(root)
+        check("带括号注释的非法状态值照旧要抓到",
+              any("不在允许取值" in x for x in hv_bad), f"{hv_bad}")
+
     print("[13] 字数只判下限：超上限不再报警（作者决定不做字数上限）")
     with tempfile.TemporaryDirectory() as tmp:
         cd = Path(tmp) / "chapters"
@@ -519,6 +543,36 @@ def main() -> int:
     rb_hard, _ = series_audit.check_nodes(reset_bad)
     check("重置之后，新序列内部倒退照样报",
           any("倒计时倒退" in x for x in rb_hard), f"{rb_hard}")
+
+    # 坑 5：一跳跨了 10 天，正文里已经写了「出京第十日」这样的时间标记，
+    # 但脚本只看得见 front-matter 的数字 —— 默认阈值 1 天，于是会一直提醒"需要过渡"。
+    # 本书的规矩比它宽（超 3 天给一个明确时间标记即可），用 bands 按本书放宽。
+    jump = [node(9, hook_type="悬念", opening_type="对话", payoff="无",
+                 payoff_strength=0, emotion="压抑", subplots="", countdown="D-90"),
+            node(10, hook_type="危机", opening_type="物件", payoff="无",
+                 payoff_strength=0, emotion="紧张", subplots="", countdown="D-80")]
+    _, j_soft = series_audit.check_nodes(jump)
+    check("默认阈值下，一跳 10 天照样提醒需要过渡（豁免前行为不变）",
+          any("倒计时跳跃" in x for x in j_soft), f"{j_soft}")
+    _, j2_soft = series_audit.check_nodes(jump, {"countdown_jump_days_max": 10})
+    check("bands.countdown_jump_days_max=10 时不再提醒",
+          not any("倒计时跳跃" in x for x in j2_soft), f"{j2_soft}")
+    _, j3_soft = series_audit.check_nodes(
+        [node(11, hook_type="悬念", opening_type="对话", payoff="无",
+              payoff_strength=0, emotion="压抑", subplots="", countdown="D-20"),
+         node(12, hook_type="危机", opening_type="物件", payoff="无",
+              payoff_strength=0, emotion="紧张", subplots="", countdown="D-8")],
+        {"countdown_jump_days_max": 3})
+    check("豁免只放宽到设定值：一跳 12 天（>3）仍然报",
+          any("倒计时跳跃" in x for x in j3_soft), f"{j3_soft}")
+    j4_hard, _ = series_audit.check_nodes(
+        [node(13, hook_type="悬念", opening_type="对话", payoff="无",
+              payoff_strength=0, emotion="压抑", subplots="", countdown="D-5"),
+         node(14, hook_type="危机", opening_type="物件", payoff="无",
+              payoff_strength=0, emotion="紧张", subplots="", countdown="D-9")],
+        {"countdown_jump_days_max": 10})
+    check("豁免只放宽「跳跃」，不放宽「倒退」（D-5→D-9 照样必须改）",
+          any("倒计时倒退" in x for x in j4_hard), f"{j4_hard}")
 
     print("[15] 本书区间豁免（bands）：确认刻意风格就明确豁免，别让告警一直刷")
     # 夹具必须 ≥500 字，否则统计类判断被跳过（校验器自己的门槛）
@@ -1351,6 +1405,51 @@ def main() -> int:
         with contextlib.redirect_stdout(io.StringIO()):
             rc_br4 = index_search.main(["brief", "98", "--novel", str(iroot)])
         check("既无正文也无节点 → 退 2 并提示先写节点", rc_br4 == 2, f"rc={rc_br4}")
+
+    print("[33] 禁止矛盾扫描的路径回退（CWD 相对路径会让红线整段跳过）")
+    # 默认路径 `novel/world/世界观.md` 是 CWD 相对的。在 novel/ 里跑（很自然的用法）
+    # 就找不到 → 红线扫描整段跳过，而报告里那句"必须改：无"读起来像"全都查过了"。
+    # 实测踩过一次：从 novel/ 跑三章，三章各少查 11 条禁止矛盾。
+    with tempfile.TemporaryDirectory() as tmp:
+        # 好夹具放在 tmp/proj/novel/ 下：这样从 tmp/nowhere 上溯时
+        # 不会撞上它（否则"找不到"这个用例会被自己的夹具喂成假通过 —— 第一次就踩了）
+        root = Path(tmp) / "proj" / "novel"
+        (root / "world").mkdir(parents=True)
+        wp_new = root / "world" / "世界观.md"
+        wp_new.write_text("## 禁止矛盾清单\n\n| `手机` | 现代词 |\n| `公里` | 现代计量 |\n",
+                          encoding="utf-8")
+        (root / "chapters").mkdir()
+        ch_new = root / "chapters" / "第1章.md"
+        ch_new.write_text("正文正文正文\n", encoding="utf-8")
+
+        found = style_audit.find_forbidden_near([ch_new.parent])
+        check("从章节目录上溯能找到 world/世界观.md（不再整段跳过）",
+              found is not None, f"{found}")
+        check("找到的正是项目里那一个",
+              found is not None and found.resolve() == wp_new.resolve(), f"{found}")
+        deeper = root / "chapters" / "a" / "b"
+        deeper.mkdir(parents=True)
+        check("更深的子目录也能上溯找到",
+              style_audit.find_forbidden_near([deeper]) is not None, "应能找到")
+        check("找到之后真能提出禁用短句",
+              "手机" in (style_audit.load_forbidden(found) if found else []), "应含手机")
+
+        nowheere_tree = Path(tmp) / "nowhere"
+        nowheere_tree.mkdir()
+        check("这一层确实没有时返回 None（不假装查过）",
+              style_audit.find_forbidden_near([nowheere_tree]) is None, "应返回 None")
+
+        # 反向保护：显式 --forbidden 指错路径是"人的明确指令"，不许被回退逻辑悄悄救回来。
+        # 走一次真正的 main()，看它打印的是哪一句。
+        explicit_missing = str(Path(tmp) / "definitely_not_here" / "世界观.md")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            style_audit.main([str(ch_new), "--forbidden", explicit_missing])
+        out_new = buf.getvalue()
+        check("显式路径找不到时，照旧明说「已跳过」",
+              "禁止矛盾扫描已跳过" in out_new, out_new.splitlines()[:3])
+        check("显式路径不会触发路径回退",
+              "已按项目布局改用" not in out_new, out_new.splitlines()[:3])
 
     print()
     if failures:

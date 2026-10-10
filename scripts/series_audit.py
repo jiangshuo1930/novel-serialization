@@ -492,11 +492,21 @@ def check_word_floor(nodes: list[dict], chapters_dir: Path, target_words: int,
     return soft
 
 
-def check_nodes(nodes: list[dict]) -> tuple[list[str], list[str]]:
+def check_nodes(nodes: list[dict], bands: dict | None = None) -> tuple[list[str], list[str]]:
     hard: list[str] = []
     soft: list[str] = []
     if not nodes:
         return ["没找到任何节点文件（novel/plot/节点-第XXXX章.md）"], soft
+
+    # 倒计时一跳允许跨几天。默认 1 天（脚本只看得见 front-matter 的数字，
+    # **看不见正文里写了没写过渡**，所以它只能提醒"这一跳需要过渡"）。
+    # 本书的规矩比这宽（超 3 天给一个明确时间标记即可），就在基线 JSON 的
+    # `bands: {"countdown_jump_days_max": 10}` 里按本书放宽——**只放宽，不收紧**。
+    jump_max = 1
+    if bands:
+        _j = bands.get("countdown_jump_days_max")
+        if isinstance(_j, int) and _j >= 1:
+            jump_max = _j
 
     chapters = [n["_chapter"] for n in nodes if n["_chapter"] is not None]
     if chapters:
@@ -575,8 +585,9 @@ def check_nodes(nodes: list[dict]) -> tuple[list[str], list[str]]:
         cur_ch, cur_v, cur_s = remaining[i]
         if cur_v < prev_v:
             hard.append(f"倒计时倒退：第 {prev_ch} 章 {prev_s} → 第 {cur_ch} 章 {cur_s}（时间不能倒流）")
-        elif cur_v - prev_v > 1:
-            soft.append(f"倒计时跳跃：第 {prev_ch} 章 {prev_s} → 第 {cur_ch} 章 {cur_s}（一跳超过 1 天，需要过渡）")
+        elif cur_v - prev_v > jump_max:
+            soft.append(f"倒计时跳跃：第 {prev_ch} 章 {prev_s} → 第 {cur_ch} 章 {cur_s}"
+                        f"（一跳超过 {jump_max} 天，需要过渡）")
 
     # front-matter 字段名体检：**名字被改 = 依赖它的检查静默失效**（B029）
     if nodes:
@@ -986,12 +997,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # 字数下限比例：默认 0.90，可在基线 JSON 的 bands 里按本书改（**只放宽下限，不加上限**）
     low_ratio = WORD_LOW_RATIO
+    bands: dict = {}
     if args.baseline:
         bp = Path(args.baseline)
         if bp.is_file():
             try:
-                _bands = (json.loads(bp.read_text(encoding="utf-8-sig")) or {}).get("bands") or {}
-                _r = _bands.get("word_low_ratio")
+                bands = (json.loads(bp.read_text(encoding="utf-8-sig")) or {}).get("bands") or {}
+                _r = bands.get("word_low_ratio")
                 if isinstance(_r, (int, float)) and 0 < _r <= 1:
                     low_ratio = float(_r)
             except Exception as exc:
@@ -1005,7 +1017,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     nodes = load_nodes(plot_dir)
-    hard, soft = check_nodes(nodes)
+    hard, soft = check_nodes(nodes, bands)
 
     _measured: dict = {}
     if args.target_words:

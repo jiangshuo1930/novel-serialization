@@ -431,6 +431,12 @@ def check_volume_outline(root: Path):
             if not line.strip().startswith("|"):
                 continue
             cells = [c.strip() for c in line.strip("|").split("|")]
+            # Markdown 表头分隔行（| --- | --- |）的第一格 "---" 会命中下面的
+            # `[\d\-]+`（那是为了容忍 "1-3" 这类章号区间），于是整行被当成数据行，
+            # 报出「状态列写了「---」」这种假错误——**脚本自带的卷纲模板就会触发**。
+            # 回归测试见 selftest.py 的「卷纲状态列」一节。
+            if all((not c) or re.fullmatch(r":?-{1,}:?", c) for c in cells):
+                continue
             if len(cells) < 4:
                 continue
             if not re.fullmatch(r"[\d\-]+", cells[0]):

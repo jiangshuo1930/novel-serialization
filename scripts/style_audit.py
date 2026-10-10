@@ -1070,6 +1070,31 @@ def collect_targets(paths: list[str], dirs: list[str], recursive: bool) -> list[
     return [p for p in targets if p.is_file()]
 
 
+def find_forbidden_near(start_dirs: list[Path]) -> Path | None:
+    """按项目布局找回 world/世界观.md：从待审章节所在目录逐级往上找。
+
+    为什么需要它：默认路径 `novel/world/世界观.md` 是 **CWD 相对**的。
+    在 `novel/` 里跑（很自然的用法）就会找不到，于是**红线扫描整段跳过**——
+    而报告里那句"必须改：无"读起来像"全都查过了"。实测踩过一次：
+    从 novel/ 跑三章，三章都少查了 11 条禁止矛盾，输出里只有一行不显眼的提示。
+    """
+    seen: set[Path] = set()
+    for d in start_dirs:
+        try:
+            d = d.resolve()
+        except OSError:
+            continue
+        for base in [d, *d.parents]:
+            if base in seen:
+                continue
+            seen.add(base)
+            for rel in (("world", "世界观.md"), ("novel", "world", "世界观.md")):
+                cand = base.joinpath(*rel)
+                if cand.is_file():
+                    return cand
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="本地 AI 味预筛（代理指标，不是朱雀）")
     ap.add_argument("paths", nargs="*", help="要检查的章节文件")
@@ -1126,7 +1151,19 @@ def main(argv: list[str] | None = None) -> int:
             )
     forbidden: list[str] = []
     if not args.no_forbidden:
-        fp_path = Path(args.forbidden) if args.forbidden else Path("novel/world/世界观.md")
+        if args.forbidden:
+            fp_path = Path(args.forbidden)
+        else:
+            fp_path = Path("novel/world/世界观.md")
+            if not fp_path.is_file():
+                # 默认路径找不到时按项目布局回退，别让红线扫描悄悄消失
+                starts = [Path(p).parent for p in args.paths]
+                starts += [Path(d) for d in args.dir]
+                found = find_forbidden_near(starts or [Path.cwd()])
+                if found is not None:
+                    print(f"提示：默认路径 {fp_path} 不在当前目录（CWD 相对），"
+                          f"已按项目布局改用 {found}\n")
+                    fp_path = found
         if fp_path.is_file():
             forbidden = load_forbidden(fp_path)
             if forbidden:
