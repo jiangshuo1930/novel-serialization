@@ -1,11 +1,18 @@
 # novel-serialization · 长篇小说连载全流程管理（Agent Skill）
 
+[![selftest](https://github.com/jiangshuo1930/novel-serialization/actions/workflows/selftest.yml/badge.svg)](https://github.com/jiangshuo1930/novel-serialization/actions/workflows/selftest.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 一套给 AI Agent 用的**长篇网文连载**工作流技能：写前自动加载角色/大纲/伏笔，写后自动更新档案，
 全程卡风格一致性与节奏（爽点、章末钩子、伏笔回收），并配合 AI 检测工具做去 AI 味。
 
 **设计取向：可复现 > 覆盖广。** 所有检查都是确定性脚本（纯 Python 标准库，零依赖、离线可用），
-因此每一项都能写回归测试——目前自带 **294 项自检**。语义层面的判断（人物是否走样、知识边界、
+因此每一项都能写回归测试——目前自带 **299 项自检**。语义层面的判断（人物是否走样、知识边界、
 概述替代场景）明确交给**人工复核清单**，不假装机器能判。
+
+> **自检不是靠自觉**：`.github/workflows/selftest.yml` 在每次推送时，于
+> Python 3.10 / 3.11 / 3.12 三个版本上各跑一遍自检，再跑一次百万字压测。
+> 任何一个红了，这次推送就是失败的。
 
 ## 安装
 
@@ -41,7 +48,7 @@ cp -r novel-serialization .agents/skills/
 | `continuity_check.py` | 跨章一致性：逐字重复、微动作刷屏、称呼契约、档案细节落地、节点字段、**写前加载留痕** |
 | `quote_check.py` | 审查报告的**引文核验闸门**：报告里引用的原文必须能在正文里字面搜到 |
 | `index_search.py` | 章节索引（SQLite+FTS5 trigram）：`build` / `find` / `who` / `verify` / **`brief`（写前简报）** / `stats` |
-| `selftest.py` | 294 项自检 |
+| `selftest.py` | 299 项自检 |
 | `stress_test.py` | 开发期压测：455 章/百万字规模下验证不崩不变慢 |
 | `zhuque_check.py` | 接腾讯朱雀 AIGC 检测官方接口（需自备密钥，走环境变量） |
 
@@ -71,4 +78,4 @@ python scripts/init_novel.py --root my-novel    # 开书
 
 ## 许可
 
-尚未指定许可证（版权归作者所有）。若希望他人自由使用，请补一份 LICENSE。
+MIT，见 [`LICENSE`](LICENSE)。可自由使用、修改、分发（保留版权声明即可）。

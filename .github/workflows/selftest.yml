@@ -1,0 +1,45 @@
+name: selftest
+
+# 为什么有它：技能的硬性要求写着"自检全绿才许推送"，但**自觉是靠不住的**，
+# 而且多会话/多人协作时更靠不住（2026 实测：同日并行提交出现过台账编号撞车）。
+# 这道 CI 把那条纪律变成机器强制：任何一个 Python 版本上自检红了，这次推送就是失败。
+#
+# 本地等价的检查（推之前自己先跑一遍）：
+#   python scripts/selftest.py && python scripts/stress_test.py
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # README 承诺 "Python 3.10+"，所以 3.10 必须真的跑（不是假设）
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 设计约束是纯标准库、零依赖、离线可用 —— 所以这里**故意不装任何依赖**。
+      # 哪天有人引入了第三方 import，这一步之后的 selftest 会立刻失败。
+      - name: 自检（应为全绿）
+        run: python scripts/selftest.py
+
+  stress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # 455 章 / 百万字规模：验证不崩、不变慢（开发期用，但每次推送都值得跑一次）
+      - name: 百万字压测
+        run: python scripts/stress_test.py

@@ -967,6 +967,24 @@ def main() -> int:
         check("编造的引文会被抓出来", len(bad2) == 1, f"{ok2} / {bad2}")
         check("太短的引文不判（可能只是泛指）",
               quote_check.extract_quotes("「他不知道」这句话很短。", min_len=6) == [], "")
+        # 英文直引号：只认成对的（直引号兼作撇号/英寸符号，不成对就会制造假阳性）
+        check("英文成对直引号能抽出来",
+              quote_check.extract_quotes('证据："他把照片翻过来，背面用铅笔写着一个日期"。') ==
+              ["他把照片翻过来，背面用铅笔写着一个日期"],
+              f"{quote_check.extract_quotes('证据：“X”')}")
+        check("不成对的直引号不抽（撇号/英寸符号不算引文）",
+              quote_check.extract_quotes("It can't be 3\" long at all.") == [], "")
+        check("不成对的引号不会被当成一条引文",
+              quote_check.extract_quotes('他说"这句话没有闭合') == [], "")
+        check("成对直引号抽出的引文也走同一套核验",
+              quote_check.check_quotes(
+                  quote_check.extract_quotes('"他把照片翻过来，背面用铅笔写着一个日期"'),
+                  quote_check.load_source([ch]))[1] == [], "应能搜到")
+        # 同一句用两种引号各引一次 → 按归一化去重，只算一条
+        check("同一句用「」和成对直引号各引一次 → 去重成一条",
+              len(quote_check.extract_quotes(
+                  '一：「他把照片翻过来，背面用铅笔写着一个日期」。'
+                  '二："他把照片翻过来，背面用铅笔写着一个日期"。')) == 1, "")
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc_good = quote_check.main([str(good), "--chapter", str(ch)])
