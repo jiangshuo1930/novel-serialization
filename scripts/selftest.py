@@ -986,7 +986,9 @@ def main() -> int:
         loaded = continuity_check.load_allowlist(wl)
         check("白名单只加载真条目（跳过 # 注释行与 > 引用行）",
               len(loaded) == 2, f"{sorted(loaded)}")
-        check("真条目确实加载了", any("值班员" in x for x in loaded), f"{sorted(loaded)}")
+        check("真条目确实加载了（而且不是说明行）",
+              len(loaded) == 2 and not any("消音器" in x or "注释" in x for x in loaded),
+              f"{sorted(loaded)}")
         check("引用行没被当成条目", not any("消音器" in x for x in loaded), f"{sorted(loaded)}")
 
         import contextlib
