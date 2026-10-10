@@ -466,7 +466,6 @@ def main() -> int:
         # 症状：《校花好感度归零》第 11-20 章每章被报 4-6 条"span:一天/gap:2天/
         # hook_type:反转"假阳性——章节文件顶部 front-matter 是结构元数据，
         # 枚举值天然多章重复，不应参与正文句子重复检测。
-        import tempfile
         with tempfile.TemporaryDirectory() as td:
             _td = Path(td)
             for i, fm in enumerate(("span:一天\nhook_type:反转", "span:一天\nhook_type:反转")):
