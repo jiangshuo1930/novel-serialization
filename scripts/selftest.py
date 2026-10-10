@@ -1303,6 +1303,38 @@ def main() -> int:
         check("活跃表与回收记录无交集时不报矛盾",
               not any("同时出现" in x for x in h_c2), f"{h_c2}")
 
+    print("[37] 伏笔回收后移出活跃表 → 检查器必须认得「回收记录」（B041）")
+    # 按技能自己的规矩：伏笔回收后要记进「回收记录」并从活跃表移出
+    # （见 references/foreshadowing-template.md 的回收规则 6）。可检查器原来只认活跃表，
+    # 于是"照规矩做"被判成"回收了不存在的编号"——**正确做法被报成错误**。
+    with tempfile.TemporaryDirectory() as tmp:
+        fp4 = Path(tmp) / "伏笔表.md"
+        fp4.write_text(
+            "# 伏笔表\n\n## 活跃伏笔（已埋 / 推进中）\n\n"
+            "| 编号 | 内容 | 类型 | 层级 | 标签 | 埋设章 | 计划回收章 | 状态 | 最近推进章 | 备注 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| F001 | 甲 | 主线 | 核心 | 身份 | 第1章 | 第420章 | 已埋 | 第3章 | —— |\n\n"
+            "## 本章伏笔操作（每次写章后填）\n\n"
+            "**第20章**\n\n- 新埋：无\n- 推进：无\n- 回收：#F003（在交账那一段回应）\n- 碰一下：无\n\n"
+            "## 回收记录（已回收，一卷满后移入 novel/archive/）\n\n"
+            "| 编号 | 内容 | 埋设章 | 回收章 | 回收方式 |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| F003 | 乙 | 第1章 | 第20章 | 交账时掀开 |\n",
+            encoding="utf-8")
+        r5 = series_audit.parse_foreshadowing(fp4)
+        h5b, s5b = series_audit.check_recovery_declared(r5, fp4)
+        check("回收后移出活跃表、记进回收记录 → 不再报「回收了不存在的编号」",
+              not any("没有的编号" in x for x in h5b + s5b), f"{h5b} {s5b}")
+
+        # 反向保护：既不在活跃表、也不在回收记录里 → 照旧报
+        fp5 = Path(tmp) / "伏笔表5.md"
+        fp5.write_text(fp4.read_text(encoding="utf-8").replace(
+            "| F003 | 乙 | 第1章 | 第20章 | 交账时掀开 |\n", ""), encoding="utf-8")
+        r6 = series_audit.parse_foreshadowing(fp5)
+        h6b, s6b = series_audit.check_recovery_declared(r6, fp5)
+        check("两处都没有的编号照旧报出来（放宽没变成关掉）",
+              any("没有的编号" in x for x in h6b + s6b), f"{h6b} {s6b}")
+
     print("[31] 未知字段/列名（zod .strict() 的等价物）")
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)

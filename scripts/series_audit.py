@@ -813,6 +813,19 @@ def check_foreshadow_consistency(rows: list[dict], archived: list[dict]) -> tupl
     return hard, soft
 
 
+def _recovered_ids(text: str) -> set[str]:
+    """「回收记录」表里出现过的编号。
+
+    为什么需要它：按本技能自己的规矩，伏笔回收后**要记进回收记录、并从活跃表移出**
+    （见 `references/foreshadowing-template.md` 的回收规则 6）。可检查器原来只认活跃表，
+    于是"照规矩做"反而被判成"回收了不存在的编号"——**正确做法被报成错误**（B041）。
+    """
+    m = re.search(r"^#{2,3}\s*回收记录[^\n]*\n(.*?)(?=\n#{2,3}\s|\Z)", text, re.S | re.M)
+    if not m:
+        return set()
+    return set(re.findall(r"F\d+", m.group(1)))
+
+
 def check_recovery_declared(rows: list[dict], path: Path) -> tuple[list[str], list[str]]:
     """「本章伏笔操作」里写了「回收：FN」，但活跃表状态还是 已埋/推进中 → **说收了没收**。"""
     hard: list[str] = []
@@ -837,11 +850,13 @@ def check_recovery_declared(rows: list[dict], path: Path) -> tuple[list[str], li
             "「本章伏笔操作」里说已回收，但活跃表状态还是 已埋/推进中：" + "、".join(bad)
             + " → **说收了没收**（要么补回收动作，要么改回收记录）"
         )
-    missing = [f for f in sorted(declared) if f not in by_id]
+    # 已按规矩移进「回收记录」的编号是**正常的**，不算"没有对照关系"
+    recovered = _recovered_ids(text)
+    missing = [f for f in sorted(declared) if f not in by_id and f not in recovered]
     if missing:
         soft.append(
             "「本章伏笔操作」里回收了伏笔表里没有的编号：" + "、".join(missing)
-            + " → 编号写错，或该条已被移出活跃表（那就没有对照关系了）"
+            + " → 编号写错，或该条既不在活跃表、也不在回收记录里"
         )
     return hard, soft
 
