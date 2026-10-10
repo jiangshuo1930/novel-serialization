@@ -8,10 +8,16 @@
 全部通过 → 退出码 0；有失败 → 退出码 1，并打印失败原因。
 设计原则：**只对"确定性规则"下断言**（黑名单、配额、解析、轮换、超期、倒计时），
 统计类指标与我手算的句子长度只报告、不判定，避免夹具问题造成假 FAIL。
+
+自检项数是**文档承诺**：`README.md` 两处写着"N 项自检"。这个数字由本文件末尾自动核对，
+数字变了就报 FAIL 并告诉你要改哪两处——不要让文档悄悄过期。
 """
 
 from __future__ import annotations
 
+import contextlib
+import io
+import os
 import re
 import sys
 import tempfile
@@ -651,9 +657,6 @@ def main() -> int:
               got == "sk-REGRESSION0123456789", repr(got))
 
         # 写侧必须仍是 utf-8（不带 BOM），否则会把 BOM 写进所有生成文件
-        import contextlib
-        import io
-
         with contextlib.redirect_stdout(io.StringIO()):
             continuity_check.main(["--novel", str(root), "--write-allowlist"])
         wf = root / "state" / "连续性白名单.md"
@@ -810,9 +813,6 @@ def main() -> int:
         chap.write_text(
             "\n\n".join(["他走了。", "他站在门口看了我一会儿，最后还是什么都没说就走了。"] * 12),
             encoding="utf-8")
-        import contextlib
-        import io
-
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = style_audit.main([str(chap), "--style-from", str(ref)])
@@ -942,9 +942,6 @@ def main() -> int:
         check("编造的引文会被抓出来", len(bad2) == 1, f"{ok2} / {bad2}")
         check("太短的引文不判（可能只是泛指）",
               quote_check.extract_quotes("「他不知道」这句话很短。", min_len=6) == [], "")
-        import contextlib
-        import io
-
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc_good = quote_check.main([str(good), "--chapter", str(ch)])
@@ -1058,9 +1055,6 @@ def main() -> int:
               len(loaded) == 2 and not any("消音器" in x or "注释" in x for x in loaded),
               f"{sorted(loaded)}")
         check("引用行没被当成条目", not any("消音器" in x for x in loaded), f"{sorted(loaded)}")
-
-        import contextlib
-        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -1366,9 +1360,6 @@ def main() -> int:
         (iroot / "plot" / "节点-第0002章.md").write_text(
             "---\nchapter: 2\ncharacters: 老周\n---\n", encoding="utf-8")
 
-        import contextlib
-        import io
-
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc_b = index_search.main(["build", "--novel", str(iroot)])
@@ -1506,7 +1497,206 @@ def main() -> int:
         check("这一轮不许假装有豁免（该报的还要报）",
               "跨章逐字重复" in buf_c.getvalue(), buf_c.getvalue()[-320:])
 
+    print("[36] 禁止矛盾扫描不许跨项目污染（拿别的项目的红线扫这一篇）")
+    # 真实踩过：技能装在 `E:\小说\.dsh\skills\` 下，审技能自带的 `examples/chapters`
+    # 时，上溯会一路走到盘符根、撞上 `E:\小说\novel\world\世界观.md`——那是**另一个项目**
+    # 的红线，命中/不命中都是假的证据。修法：上溯止于被审文件自己的项目根；
+    # CWD 的默认路径只在"确实属于被审项目"时才采用。
+    with tempfile.TemporaryDirectory() as tmp:
+        a_novel = Path(tmp) / "projA" / "novel"
+        (a_novel / "world").mkdir(parents=True)
+        (a_novel / "chapters").mkdir()
+        a_world = a_novel / "world" / "世界观.md"
+        a_world.write_text("## 禁止矛盾清单\n\n| `手机` | 现代词 |\n", encoding="utf-8")
+
+        b_novel = Path(tmp) / "projB" / "novel"
+        (b_novel / "world").mkdir(parents=True)
+        (b_novel / "chapters").mkdir()
+        b_world = b_novel / "world" / "世界观.md"
+        b_world.write_text("## 禁止矛盾清单\n\n| `公里` | 现代计量 |\n", encoding="utf-8")
+        ch_b = b_novel / "chapters" / "第1章.md"
+        ch_b.write_text("正文正文正文\n", encoding="utf-8")
+
+        check("novel_root_of 认得出 novel/ 段",
+              style_audit.novel_root_of(ch_b.parent) == b_novel.resolve(),
+              f"{style_audit.novel_root_of(ch_b.parent)}")
+        check("没有项目骨架时 novel_root_of 返回 None",
+              style_audit.novel_root_of(Path(tmp)) is None, "应返回 None")
+        check("从章节目录命名回退：上溯只认自己项目的 world/世界观.md",
+              style_audit.find_forbidden_near([ch_b.parent]) == b_world.resolve(),
+              f"{style_audit.find_forbidden_near([ch_b.parent])}")
+
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(a_novel)                      # CWD 在 A 项目里，却要审 B 项目的章节
+            buf36 = io.StringIO()
+            with contextlib.redirect_stdout(buf36):
+                rc36 = style_audit.main(["--dir", str(b_novel / "chapters")])
+            out36 = buf36.getvalue()
+            check("跨项目时读的是被审项目自己的世界观，不是 CWD 那份",
+                  str(b_world) in out36 and str(a_world) not in out36,
+                  out36.splitlines()[:3])
+            check("跨项目时不会把 A 项目的红线拿出来用",
+                  "手机" not in out36, out36.splitlines()[:3])
+            check("跨项目时照旧退 0（不是用法错误）", rc36 == 0, f"rc={rc36}")
+
+            # 反向保护：CWD 就是被审项目的根时，仍要照常读自己的世界观
+            (a_novel / "chapters" / "第1章.md").write_text("正文正文正文\n", encoding="utf-8")
+            buf36b = io.StringIO()
+            with contextlib.redirect_stdout(buf36b):
+                style_audit.main(["--dir", str(a_novel / "chapters")])
+            check("CWD 就是被审项目时照常读自己的世界观",
+                  "读到 1 条" in buf36b.getvalue(), buf36b.getvalue().splitlines()[:3])
+
+            os.chdir(b_novel)                      # 项目内的三要素：章节、节点、白名单
+            b_ch = b_novel / "chapters" / "第1章.md"
+            b_ch.write_text("他站在门口看了一眼。\n\n他往前走了一步。\n", encoding="utf-8")
+            (b_novel / "plot").mkdir()
+            (b_novel / "plot" / "节点-第0001章.md").write_text(
+                "---\nchapter: 1\n---\n\n## 本章节点\n\n- 事件：试\n", encoding="utf-8")
+            buf36c = io.StringIO()
+            with contextlib.redirect_stdout(buf36c):
+                style_audit.main([str(b_ch)])
+            check("在项目里跑时默认路径照旧命中",
+                  "读到 1 条" in buf36c.getvalue(), buf36c.getvalue().splitlines()[:3])
+
+            # 上溯撞上"CWD 所属项目"的那一种（原来最脏的形态）：
+            # CWD 的 novel/ 里确实有世界观，被审文件却在别处、周围没有任何项目骨架。
+            stray = Path(tmp) / "别处" / "第9章.md"
+            stray.parent.mkdir()
+            stray.write_text("正文正文正文\n", encoding="utf-8")
+            os.chdir(a_novel)
+            buf36d = io.StringIO()
+            with contextlib.redirect_stdout(buf36d):
+                style_audit.main([str(stray)])
+            out36d = buf36d.getvalue()
+            check("被审文件周围没有项目骨架时，不许拿 CWD 那份红线顶替",
+                  "禁止矛盾清单：从" not in out36d, out36d.splitlines()[:3])
+            check("这种情况要明说已跳过，而不是静默",
+                  "已跳过" in out36d, out36d.splitlines()[:3])
+        finally:
+            os.chdir(old_cwd)
+
+    print("[37] 引文核验：抽出 0 条引文必须报「无法核对」，不许报通过")
+    # 空结果是合法结果，但不是合格结果。一条引文都没抽到时这道闸门什么都没核，
+    # 以前会打印"全部引文都能在正文里字面搜到 ✓"——那句话是假绿灯。
+    with tempfile.TemporaryDirectory() as tmp:
+        qch = Path(tmp) / "第1章.md"
+        qch.write_text("他把灯吹灭了。\n", encoding="utf-8")
+        no_quote = Path(tmp) / "无引文报告.md"
+        no_quote.write_text("# 审查报告\n\n这一版比上一版好，节奏更稳。\n", encoding="utf-8")
+        quote_ok = Path(tmp) / "有引文报告.md"
+        quote_ok.write_text("证据：「他把灯吹灭了」——收得干净。\n", encoding="utf-8")
+
+        buf37 = io.StringIO()
+        with contextlib.redirect_stdout(buf37):
+            rc37 = quote_check.main([str(no_quote), "--chapter", str(qch)])
+        out37 = buf37.getvalue()
+        check("0 条引文时明说「无法核对」", "无法核对" in out37, out37.splitlines()[:3])
+        check("0 条引文时不再打印「都能搜到 ✓」",
+              "都能在正文里字面搜到" not in out37, out37.splitlines()[:3])
+        check("0 条引文不算闸门失败（不是「搜不到」，是根本没核）", rc37 == 0, f"rc={rc37}")
+
+        buf37b = io.StringIO()
+        with contextlib.redirect_stdout(buf37b):
+            rc37b = quote_check.main([str(quote_ok), "--chapter", str(qch)])
+        check("有引文且都对时照旧打勾", "都能在正文里字面搜到" in buf37b.getvalue(),
+              buf37b.getvalue()[-200:])
+        check("有引文且都对时退 0", rc37b == 0, f"rc={rc37b}")
+
+    print("[38] 三个检查器的退出码契约（跨章一致性默认设闸门，可 --no-strict 放宽）")
+    with tempfile.TemporaryDirectory() as tmp:
+        eroot = Path(tmp) / "novel"
+        for sub in ("chapters", "plot", "world"):
+            (eroot / sub).mkdir(parents=True)
+        dup = "他说这事得照章办"
+        (eroot / "chapters" / "第1章-甲.md").write_text(
+            f"他站在门口看了一眼。\n\n{dup}。\n\n他往前走了一步。\n", encoding="utf-8")
+        (eroot / "chapters" / "第2章-乙.md").write_text(
+            f"她又问了一遍。\n\n{dup}。\n\n她把门关上了。\n", encoding="utf-8")
+        buf38 = io.StringIO()
+        with contextlib.redirect_stdout(buf38):
+            rc_default = continuity_check.main(["--novel", str(eroot)])
+        check("有必须改时默认退 1（硬闸门）", rc_default == 1, f"rc={rc_default}")
+        check("默认这一轮确实报了跨章逐字重复",
+              "跨章逐字重复" in buf38.getvalue(), buf38.getvalue()[-200:])
+        buf38b = io.StringIO()
+        with contextlib.redirect_stdout(buf38b):
+            rc_lax = continuity_check.main(["--novel", str(eroot), "--no-strict"])
+        check("--no-strict 时只报告不设闸门（退 0）", rc_lax == 0, f"rc={rc_lax}")
+        check("--no-strict 不改变报告内容",
+              "跨章逐字重复" in buf38b.getvalue(), buf38b.getvalue()[-200:])
+
+    print("[39] 文档声明的示例输出必须和实测一致（防止文档漂移）")
+    # 为什么需要它：`examples/README.md` 与 `README.md` 里写着"应该报出来什么"和自检项数，
+    # 这些数字是**文档承诺**。脚本阈值一改、示例一改，承诺就会悄悄过期——
+    # 本轮就是这么发现的：`examples/README.md` 声称建议改 2 条，实测是 3 条
+    # （`axes:` 检查是后来加的，文档没跟上）。
+    # 这一节直接在进程内跑示例，把"承诺"与"实测"对上。
+    def _section_count(text: str, prefixes: tuple[str, ...]) -> int | None:
+        """数出某个小节下的**顶层**条目数量；找不到该小节返回 None。
+
+        顶层条目以 `  - ` 开头；`  - 　└ …` 是它的**落点子条目**（"从第几段哪一句开始"），
+        不算独立条目——`examples/README.md` 承诺的条数也是按顶层算的。
+        """
+        lines = text.splitlines()
+        start = None
+        for i, ln in enumerate(lines):
+            if any(ln.startswith(p) for p in prefixes):
+                start = i + 1
+                break
+        if start is None:
+            return None
+        n = 0
+        for ln in lines[start:]:
+            if ln and not ln.startswith("  "):
+                break
+            if ln.startswith("  - ") and "└" not in ln:
+                n += 1
+        return n
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ex_plot = EXAMPLES / "plot"
+        ex_chapters = EXAMPLES / "chapters"
+
+        buf_sa = io.StringIO()
+        with contextlib.redirect_stdout(buf_sa):
+            series_audit.main(["--plot", str(ex_plot), "--chapters-dir", str(ex_chapters),
+                               "--target-words", "620"])
+        out_sa = buf_sa.getvalue()
+        n_hard_sa = _section_count(out_sa, ("必须改：",))
+        n_soft_sa = _section_count(out_sa, ("建议改：",))
+        check("示例：连载体检「必须改」= 5 条（examples/README.md 的承诺）",
+              n_hard_sa == 5, f"实测 {n_hard_sa}")
+        check("示例：连载体检「建议改」= 3 条（含新增的 axes 检查）",
+              n_soft_sa == 3, f"实测 {n_soft_sa}")
+        check("示例：钩子类型不在清单里的提示还在（第 7 章故意写「翻转」）",
+              "翻转" in out_sa, out_sa[-200:])
+
+        buf_st = io.StringIO()
+        with contextlib.redirect_stdout(buf_st):
+            style_audit.main(["--dir", str(ex_chapters),
+                              "--blacklist", str(BLACKLIST_PATH)])
+        out_st = buf_st.getvalue()
+        n_hard_st = _section_count(out_st, ("必须改：",))
+        n_soft_st = _section_count(out_st, ("参考区间外",))
+        check("示例：单章预筛「必须改」= 3 条（examples/README.md 的承诺）",
+              n_hard_st == 3, f"实测 {n_hard_st}")
+        check("示例：单章预筛「参考区间外」= 4 条",
+              n_soft_st == 4, f"实测 {n_soft_st}")
+        check("示例：第 1 章字数 613（走正文实测，不是节点自报）",
+              "字数 613" in out_st, out_st[:200])
+
+    # 自检项数被 README 两处写死；数字一变文档就会过期。
+    # 注意顺序：这一项必须在**所有检查都跑完之后**才算，因为它断言的正是最终总数
+    # （`checks` 计数器是边跑边加的，写在上面的断言会把自己也数进去，永远差 1）。
     print()
+    readme = (SKILL_DIR / "README.md").read_text(encoding="utf-8")
+    claimed = sorted({int(m) for m in re.findall(r"(\d+)\s*项自检", readme)})
+    if claimed != [checks]:
+        failures.append(
+            f"README 里的自检项数与实际不一致：文档写 {claimed}，实际 {checks} "
+            f"（README.md 第 7 行与脚本表两处都要改成 {checks}）")
     if failures:
         print(f"自检失败：{len(failures)}/{checks} 项未通过")
         for f in failures:

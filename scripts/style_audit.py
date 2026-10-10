@@ -1081,13 +1081,39 @@ def collect_targets(paths: list[str], dirs: list[str], recursive: bool) -> list[
     return [p for p in targets if p.is_file()]
 
 
+def novel_root_of(start: Path) -> Path | None:
+    """从被审文件（或目录）的位置定出 `novel/` 根目录，定不出就返回 None。
+
+    两个信号，取最近的：
+      1. 路径里出现名为 `novel` 的目录段（`.../novel/chapters/第1章.md`）
+      2. 往上找到的第一个带 `chapters/` 或 `plot/` 子目录的目录（项目根不是 `novel` 时）
+    """
+    try:
+        start = start.resolve()
+    except OSError:
+        return None
+    chain = [start, *start.parents]
+    for base in chain:
+        if base.name == "novel":
+            return base
+    for base in chain:
+        if (base / "chapters").is_dir() or (base / "plot").is_dir():
+            return base
+    return None
+
+
 def find_forbidden_near(start_dirs: list[Path]) -> Path | None:
-    """按项目布局找回 world/世界观.md：从待审章节所在目录逐级往上找。
+    r"""按项目布局找回 world/世界观.md：从待审章节所在目录逐级往上找。
 
     为什么需要它：默认路径 `novel/world/世界观.md` 是 **CWD 相对**的。
     在 `novel/` 里跑（很自然的用法）就会找不到，于是**红线扫描整段跳过**——
     而报告里那句"必须改：无"读起来像"全都查过了"。实测踩过一次：
     从 novel/ 跑三章，三章都少查了 11 条禁止矛盾，输出里只有一行不显眼的提示。
+
+    **上溯必须止于项目根**：无限上溯会一路走到盘符根目录，于是技能自己放进
+    某个项目里时（实测：技能在 `E:\小说\.dsh\skills\` 下），审技能自带的
+    `examples/chapters` 会撞上 `E:\小说\novel\world\世界观.md`——**拿另一个项目的
+    红线**去做字面扫描，命不命中都是假的。所以只按「离被审文件最近的项目根」查。
     """
     seen: set[Path] = set()
     for d in start_dirs:
@@ -1095,14 +1121,20 @@ def find_forbidden_near(start_dirs: list[Path]) -> Path | None:
             d = d.resolve()
         except OSError:
             continue
+        root = novel_root_of(d)
+        if root is not None:
+            for rel in (("world", "世界观.md"),):
+                cand = root.joinpath(*rel)
+                if cand.is_file():
+                    return cand
+        # 兜底：路径里没有项目骨架时，仍允许"章节目录的父目录就是 novel 根"这种布局
         for base in [d, *d.parents]:
             if base in seen:
                 continue
             seen.add(base)
-            for rel in (("world", "世界观.md"), ("novel", "world", "世界观.md")):
-                cand = base.joinpath(*rel)
-                if cand.is_file():
-                    return cand
+            cand = base / "world" / "世界观.md"
+            if cand.is_file():
+                return cand
     return None
 
 
@@ -1162,20 +1194,46 @@ def main(argv: list[str] | None = None) -> int:
             )
     forbidden: list[str] = []
     if not args.no_forbidden:
+        skipped_reason = ""
         if args.forbidden:
             fp_path = Path(args.forbidden)
         else:
-            fp_path = Path("novel/world/世界观.md")
-            if not fp_path.is_file():
-                # 默认路径找不到时按项目布局回退，别让红线扫描悄悄消失
-                starts = [Path(p).parent for p in args.paths]
-                starts += [Path(d) for d in args.dir]
-                found = find_forbidden_near(starts or [Path.cwd()])
+            # 默认路径是 CWD 相对的，这里要回答两个问题：
+            # ① 它找得到吗？② 它属于**被审文件所在的**那个项目吗？
+            # 只答 ① 会出事：在 A 项目里审 B 项目的章节时，A 的红线会被拿去扫 B 的正文，
+            # 命不命中都是假的（实测：技能装在 E:\小说\.dsh 下，审技能自带的 examples 时
+            # 会读到 E:\小说\novel\world\世界观.md 的 11 条红线）。
+            starts = [Path(p).parent for p in args.paths]
+            starts += [Path(d) for d in args.dir]
+            audit_roots = {r for r in (novel_root_of(s) for s in starts) if r is not None}
+            default_path = Path("novel/world/世界观.md")
+            if default_path.is_file() and (
+                    not audit_roots or default_path.resolve().parent.parent in audit_roots):
+                fp_path = default_path
+            else:
+                found = find_forbidden_near(starts)
                 if found is not None:
-                    print(f"提示：默认路径 {fp_path} 不在当前目录（CWD 相对），"
-                          f"已按项目布局改用 {found}\n")
+                    if default_path.is_file():
+                        print(f"提示：默认路径 {default_path} 属于另一个项目"
+                              f"（{Path.cwd().resolve() / 'novel'}），"
+                              f"与被审文件所在的项目"
+                              f"（{'、'.join(sorted(str(r) for r in audit_roots))}）不一致，"
+                              f"已改用它自己项目的 {found}\n")
+                    else:
+                        print(f"提示：默认路径 {default_path} 不在当前目录（CWD 相对），"
+                              f"已按项目布局改用 {found}\n")
                     fp_path = found
-        if fp_path.is_file():
+                elif default_path.is_file():
+                    # 找不到被审项目的世界观，但 CWD 下有一个：宁可跳过并说清楚，
+                    # 也不要拿别的项目的红线当"本项目已查"的假证据。
+                    fp_path = None
+                    skipped_reason = (
+                        f"默认路径 {default_path} 属于另一个项目"
+                        f"（{Path.cwd().resolve() / 'novel'}），与被审文件所在的项目不一致"
+                        f"——已跳过，避免拿别的项目的红线扫这一篇")
+                else:
+                    fp_path = default_path
+        if fp_path is not None and fp_path.is_file():
             forbidden = load_forbidden(fp_path)
             if forbidden:
                 print(f"禁止矛盾清单：从 {fp_path} 读到 {len(forbidden)} 条\n")
@@ -1187,8 +1245,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             # 静默跳过会给人"红线已经查过了"的错觉，所以明确说一声
             print(
-                f"提示：没找到 {fp_path}，禁止矛盾扫描已跳过"
-                f"（换个目录跑时用 --forbidden 指定路径，或加 --no-forbidden 关掉这条提示）\n"
+                f"提示：{skipped_reason or f'没找到 {fp_path}'}，禁止矛盾扫描已跳过"
+                f"（用 --forbidden 指定路径，或加 --no-forbidden 关掉这条提示）\n"
             )
     check_fp = bool(fingerprints)
 

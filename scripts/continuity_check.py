@@ -25,7 +25,12 @@
   python continuity_check.py --novel novel --allow novel/state/连续性白名单.md
   python continuity_check.py --novel novel --write-allowlist   # 生成白名单骨架
 
-退出码：有"必须改"时返回 1。
+退出码（三个检查器的契约**故意不同**，串命令时必须知道）：
+  0 = 没有「必须改」（或用了 --no-strict）
+  1 = 有「必须改」。**默认就设闸门**，因为跨章一致性错了会让后面几十章建在错地基上。
+      另外两个是同族里的**宽松**档：`style_audit.py` / `series_audit.py` 有必须改时
+      默认仍退 0，只有显式加 `--strict` 才退 1。要"只报告不设闸门"用 `--no-strict`。
+  2 = 用法错误（例如拒绝覆盖已有白名单）
 """
 
 from __future__ import annotations
@@ -468,6 +473,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="只生成白名单骨架，不检查")
     ap.add_argument("--force", action="store_true",
                     help="配合 --write-allowlist：覆盖已有白名单（默认拒绝，防止毁掉作者的豁免记录）")
+    # continuity_check 与另外两个检查器的退出码契约不一样（见模块 docstring）：
+    # 它是"硬闸门"，有必须改时**默认就退 1**；但这条以前没有任何逃生阀，
+    # 批量/串联调用时一个人只能在"整条命令链被中断"和"不看输出"之间二选一。
+    ap.add_argument("--no-strict", action="store_true",
+                    help="只报告不设闸门：有必须改时也以退出码 0 结束（默认退 1，与 --strict 的"
+                         " style_audit/series_audit 相反，因为跨章一致性是硬闸门）")
     args = ap.parse_args(argv)
 
     root = Path(args.novel)
@@ -552,7 +563,7 @@ def main(argv: list[str] | None = None) -> int:
     for x in soft:
         print("  - " + x)
     print("\n说明：这是本地结构检查，不判文笔。它只管「档案／正文／提纲三者对不对得上」。")
-    return 1 if hard else 0
+    return 0 if args.no_strict else (1 if hard else 0)
 
 
 if __name__ == "__main__":
