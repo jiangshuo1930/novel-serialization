@@ -849,6 +849,24 @@ def main() -> int:
               for n in ("style_audit.py", "series_audit.py", "continuity_check.py",
                         "zhuque_check.py", "init_novel.py", "selftest.py")),
           "缺脚本文件")
+    # 完结清单是最容易被写成"孤儿文档"的一份：文件在仓库里，主干却不指向它。
+    # 那样它等于不存在——而完结是唯一不可回滚的一步。
+    skill_md = (doc_root / "SKILL.md").read_text(encoding="utf-8")
+    check("SKILL.md 必须指向完结清单（完结阶段的主干入口）",
+          "completion-checklist.md" in skill_md, "SKILL.md 里没提到它")
+    check("SKILL.md 的完结阶段必须写明「钩子轮换在完结章不适用」",
+          "钩子" in skill_md and "完结章" in skill_md and "不适用" in skill_md,
+          "缺少这条已知例外，会有人为了消告警给完结章硬加钩子")
+    # README 里还写死了两个数字：黑名单条数、references 份数。都是文档承诺，都会过期。
+    n_black = len(style_audit.load_blacklist(BLACKLIST_PATH))
+    ridx = (SKILL_DIR / "README.md").read_text(encoding="utf-8")
+    claimed_black = {int(m) for m in re.findall(r"AI 味黑名单（(\d+) 条）", ridx)}
+    check(f"README 写的黑名单条数与实际一致（{n_black} 条）",
+          claimed_black == {n_black}, f"文档写 {sorted(claimed_black)}，实际 {n_black}")
+    n_refs = len(list((SKILL_DIR / "references").glob("*.md")))
+    claimed_refs = {int(m) for m in re.findall(r"(\d+)\s*份参考", ridx)}
+    check(f"README 写的 references 份数与实际一致（{n_refs} 份）",
+          claimed_refs == {n_refs}, f"文档写 {sorted(claimed_refs)}，实际 {n_refs}")
 
     print("[23] 改稿护栏 / 章节号污染 / 伏笔「最近推进章」（口径借鉴 InkOS）")
 
