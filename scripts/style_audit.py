@@ -506,10 +506,11 @@ def analyse(text: str, blacklist: list[str],
     forbidden_hits = {w: body.count(w) for w in (forbidden or []) if body.count(w) > 0}
 
     # 声纹按角色分别计数，不做合并（合并会让多传档案自动凑数，掩盖整章缺席）
+    # 同时记下"登记了几条"：登记 0 条与"登记了却没落地"是两回事，前者该修档案。
     fp_by_char: dict[str, dict] = {}
     for who, phrases in (fingerprints or {}).items():
         h = {w: body.count(w) for w in phrases if body.count(w) > 0}
-        fp_by_char[who] = {"total": sum(h.values()), "hits": h}
+        fp_by_char[who] = {"total": sum(h.values()), "hits": h, "registered": len(phrases)}
     fp_hits = {w: c for v in fp_by_char.values() for w, c in v["hits"].items()}
     fp_total = sum(v["total"] for v in fp_by_char.values())
 
@@ -715,7 +716,17 @@ def judge(r: dict, baseline: dict | None = None,
         if not r["fp_by_char"]:
             soft.append("角色声纹：本章没传 --fingerprint，未做声纹核对")
         for who, v in sorted(r["fp_by_char"].items()):
-            if v["total"] == 0:
+            if v.get("registered", 0) == 0:
+                # 档案里一条声纹都没登记 → 这一项**没法查**，不是本章写错了。
+                # 判必须改会让人永远清不掉：正文怎么改都满足不了一个空清单，
+                # 而"必须改"这个等级的语义是"改正文"。所以这里明确说"无法核对"，
+                # 并把该修的地方（档案）指出来 —— 不静默、也不假装查过。
+                soft.append(
+                    f"角色声纹【{who}】：档案的 fingerprint 块是空的 → 这一项**无法核对**"
+                    f"（不是本章的问题：要么给他的块补 3-6 条正文里能字面搜到的短串，"
+                    f"要么本章别传这个档案。别让「没法查」看起来像「查过了」）"
+                )
+            elif v["total"] == 0:
                 hard.append(
                     f"角色声纹【{who}】0 次：已声明该角色本章出场，但档案里登记的口头禅"
                     f"／标志动作一个都没落地，读者认不出他是他。"

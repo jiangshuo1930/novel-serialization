@@ -256,6 +256,20 @@ def main() -> int:
         check("同一轮里达标的老周不被误判",
               not any("老周" in s and "声纹" in s for s in mixed_hard), f"{mixed_hard}")
 
+        # 回归（B040）：档案里**一条声纹都没登记**（空块）时，这一项根本没法查。
+        # 以前它和"登记了却零命中"走同一分支 → 报必须改，可正文怎么改都清不掉
+        # （空清单永远满足不了），提示还写着"登记项：（全部缺席）"——把"档案没写"
+        # 说成了"本章没写"。那一刀该落在档案上，且必须明说"无法核对"。
+        empty_fps = {"葛瘸子": []}
+        r_empty = style_audit.analyse(HUMAN_SAMPLE + "\n是个瘸子。", blacklist, None, empty_fps)
+        e_hard, e_soft, _ = style_audit.judge(r_empty, None, True)
+        check("空声纹块不进必须改（该改的是档案，不是正文）",
+              not any("葛瘸子" in s for s in e_hard), f"{e_hard}")
+        check("但也不静默：明确报「无法核对」",
+              any("葛瘸子" in s and "无法核对" in s for s in e_soft), f"{e_soft}")
+        check("有登记却零命中仍判必须改（这次放宽没动到那条守卫）",
+              any("老周" in s and "0 次" in s for s in miss_hard), f"{miss_hard}")
+
         nopass = style_audit.analyse(HUMAN_SAMPLE, blacklist, None, {})
         _, nopass_soft, _ = style_audit.judge(nopass, None, True)
         check("没传档案时明确提示未做核对",
