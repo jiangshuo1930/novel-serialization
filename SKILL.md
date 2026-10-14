@@ -365,13 +365,13 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
 | `references/prose-craft.md` | 写正文时 |
 | `references/anti-ai-revision.md` | 改稿与评分时 |
 | `references/sepia-integration.md` | sepia 接入说明：何时用、怎么跑、分工与校准铁律 |
-| `sepia/` | vendored 反 AI 叙事架构诊断（来源/版本见 `sepia/VENDORED.md`）；`QC_FULL` 与每 3-5 章改稿前跑 sepia review 时读 |
+| `sepia/` | vendored 反 AI 叙事架构诊断（来源/版本见 `sepia/VENDORED.md`）；每章写后跑 sepia review 时读（P007：不分档位每章必跑） |
 | `references/pacing-and-payoff.md` | 定平台档位；觉得节奏塌了 |
 | `references/ai-flavor-blacklist.md` | 定稿前；脚本要读它 |
 | `references/skill-changelog.md` | **发现技能 bug 时；怀疑"这个坑是不是又来了"时** |
 | `scripts/init_novel.py` | 开书 |
 | `scripts/style_audit.py` | 每章定稿 |
-| `scripts/series_audit.py` | 每 3-5 章或一卷一次 |
+| `scripts/series_audit.py` | 每章写后跑（伏笔超期/钩子轮换/爽点断档/支线出勤/倒计时/字数）；卷末整卷复核再跑一次 |
 | `scripts/continuity_check.py` | **每 3-5 章必跑**：跨章逐字重复、章内微动作刷屏、称呼契约、档案细节是否落地、节点字段完整度、卷纲状态取值 |
 | `scripts/zhuque_check.py` | 过朱雀检测（需要环境变量里的密钥） |
 | `scripts/selftest.py` | 脚本报错时先跑它 |
