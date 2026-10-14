@@ -1778,6 +1778,53 @@ def main() -> int:
         check("示例：第 1 章字数 613（走正文实测，不是节点自报）",
               "字数 613" in out_st, out_st[:200])
 
+    print("[40] sepia 接入完整性（vendored 目录 + 接入文档与 SKILL.md 互相咬合）")
+    # 为什么需要它：sepia 是 vendored 进来的提示词型诊断技能（见 references/sepia-integration.md），
+    # 没有自己的脚本，唯一的"健康信号"就是文件在、版本对上、文档互相引用一致。
+    # 上游升级、误删文件、SKILL.md 改了引用但接入文档没跟上，都会在这一节现形。
+    sepia_dir = SKILL_DIR / "sepia"
+    sepia_skill_f = sepia_dir / "SKILL.md"
+    sepia_vendored_f = sepia_dir / "VENDORED.md"
+    sepia_refs_d = sepia_dir / "references"
+    integration_f = SKILL_DIR / "references" / "sepia-integration.md"
+
+    check("sepia/SKILL.md 存在（vendored 核心）",
+          sepia_skill_f.is_file(), str(sepia_skill_f))
+    check("sepia/VENDORED.md 存在（来源/版本声明）",
+          sepia_vendored_f.is_file(), str(sepia_vendored_f))
+    check("sepia/LICENSE 存在（上游 MIT 许可必须保留）",
+          (sepia_dir / "LICENSE").is_file(), str(sepia_dir / "LICENSE"))
+    if sepia_skill_f.is_file() and sepia_vendored_f.is_file():
+        ver_skill = re.search(r'version:\s*"([\d.]+)"',
+                              sepia_skill_f.read_text(encoding="utf-8")[:800])
+        ver_vendored = re.search(r"版本[^\d\n]*([\d.]+)",
+                                 sepia_vendored_f.read_text(encoding="utf-8"))
+        check("sepia/SKILL.md 与 VENDORED.md 版本号一致",
+              bool(ver_skill and ver_vendored and ver_skill.group(1) == ver_vendored.group(1)),
+              f"SKILL={ver_skill.group(1) if ver_skill else None} "
+              f"VENDORED={ver_vendored.group(1) if ver_vendored else None} "
+              "（上游升级后要整体替换 sepia/ 并同步 VENDORED.md）")
+    for core in ("narrative-pass.md", "discourse-pass.md", "style-pass.md", "rubric.md"):
+        check(f"sepia 核心 pass 在：{core}",
+              (sepia_refs_d / core).is_file(), str(sepia_refs_d / core))
+    check("sepia 中文校准在：references/languages/zh.md",
+          (sepia_refs_d / "languages" / "zh.md").is_file(),
+          str(sepia_refs_d / "languages" / "zh.md"))
+    check("接入文档 references/sepia-integration.md 存在",
+          integration_f.is_file(), str(integration_f))
+    skill_md_text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    check("SKILL.md 引用了接入文档（防文档漂移）",
+          "references/sepia-integration.md" in skill_md_text,
+          "SKILL.md 提到 sepia 却未指向接入文档")
+    if integration_f.is_file():
+        integ_text = integration_f.read_text(encoding="utf-8")
+        integ_refs = ("sepia/references/narrative-pass.md", "sepia/references/discourse-pass.md",
+                      "sepia/references/style-pass.md", "sepia/references/rubric.md",
+                      "sepia/references/languages/zh.md", "sepia/VENDORED.md")
+        missing_refs = [p for p in integ_refs if p not in integ_text]
+        check("接入文档引用的 sepia 文件路径与实际一致",
+              not missing_refs, f"文档缺这些引用: {missing_refs}")
+
     # 自检项数被 README 两处写死；数字一变文档就会过期。
     # 注意顺序：这一项必须在**所有检查都跑完之后**才算，因为它断言的正是最终总数
     # （`checks` 计数器是边跑边加的，写在上面的断言会把自己也数进去，永远差 1）。

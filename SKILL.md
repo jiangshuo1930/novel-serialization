@@ -112,7 +112,7 @@ novel/                                    （这个目录建议 git init 并提�
 
 | 检查档位 | 用在 | 做什么 |
 | --- | --- | --- |
-| `QC_FULL` | 卷首卷末、大兑现、转折章 | 预筛 + 朱雀 + 一致性 + 连载体检 + 复审到收敛 |
+| `QC_FULL` | 卷首卷末、大兑现、转折章 | 预筛 + sepia 架构诊断 + 朱雀 + 一致性 + 连载体检 + 复审到收敛 |
 | `QC_CHECK` | 常规章 | 预筛 + 一致性自检 + 连载体检 |
 | `QC_SKIP` | 过渡章、赶路章 | 只查黑名单与事实，朱雀攒几章一起测 |
 
@@ -268,7 +268,14 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
      - ⚠️ **这条线是作者明确要守的，不要随手放宽。** 2026 年曾一度被改成"AIGC < 0.5"，
        随后作者要求改回。真要动它，先问作者
 6. **改稿循环（两层，别混）**
+   - **第 0 步（`QC_FULL` 档与每 3-5 章）：sepia 架构诊断** —— 加载 `sepia/` 的
+     narrative/discourse/style pass + rubric（目标是中文就再加 `sepia/references/languages/zh.md`），
+     按 rubric **一次一组**逐组诊断正文，产出 `SEPIA DIAGNOSIS` 报告并并入本章改稿清单。
+     接入与分工详见 `references/sepia-integration.md`。校准铁律：**瞄准人类中间带，
+     每章只做 3-5 个 human-leaning move + 恰好 1 个 rarity move、留 slack，
+     禁止把每个 AI tell 都反转——那是造新指纹。**
    - **内层：单轮复审 ≤3 轮** —— 每轮出一份逐条报告（条号 / 原文要求 / 正文表现 / 是否违反 / 建议）
+     · 修复顺序 **deepest-first**：sepia 的架构层缺陷先于句子级；整段重写 > 换词
      · **每轮改完先跑护栏**（`--compare` 上一版）：标记数变多就说明这一轮是负收益，**回退**
      · 具体方法论与评分表见 `references/anti-ai-revision.md`
    - **外层：朱雀过线循环 ≤5 轮** —— 按标红段落定向改稿，优先级 **整段重写 > 制造句长落差 > 加私人细节 > 删形容词 > 拆连接词**，再跑朱雀
@@ -280,9 +287,9 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
 
 > **汇报纪律（脚本全绿 ≠ 没问题）。**
 > 报"检测通过"时必须同时报**脚本不查什么**，否则"全绿"读起来像"这章没问题"，是误导。
-> 固定句式：`必须改 0 ｜ 脚本不查：声纹落点、跨章重复、档案对齐、知识边界、对话占比、平台合规`。
-> 本地脚本是**结构检查**，不是文学判断；朱雀单测 AI 味，也不管设定一致性。两者都过了，
-> 剩下的"人工判断项"仍然要人过一遍。
+> 固定句式：`必须改 0 ｜ 脚本不查：声纹落点、跨章重复、档案对齐、知识边界、对话占比、平台合规 ｜ sepia 不查：跨章因果、设定物理、伏笔语义`。
+> 本地脚本是**结构检查**，不是文学判断；朱雀单测 AI 味，也不管设定一致性；sepia 管叙事架构，
+> 也不管跨章因果与伏笔语义。三者都过了，剩下的"人工判断项"仍然要人过一遍。
 
 ## 完结 / 收尾阶段（进入最后一卷后半段时读）
 
@@ -354,6 +361,8 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
 | `references/plot-node-template.md` | 每章写前定 beat、写后补节点；front-matter 取值表 |
 | `references/prose-craft.md` | 写正文时 |
 | `references/anti-ai-revision.md` | 改稿与评分时 |
+| `references/sepia-integration.md` | sepia 接入说明：何时用、怎么跑、分工与校准铁律 |
+| `sepia/` | vendored 反 AI 叙事架构诊断（来源/版本见 `sepia/VENDORED.md`）；`QC_FULL` 与每 3-5 章改稿前跑 sepia review 时读 |
 | `references/pacing-and-payoff.md` | 定平台档位；觉得节奏塌了 |
 | `references/ai-flavor-blacklist.md` | 定稿前；脚本要读它 |
 | `references/skill-changelog.md` | **发现技能 bug 时；怀疑"这个坑是不是又来了"时** |
