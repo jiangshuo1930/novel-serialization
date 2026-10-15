@@ -112,8 +112,8 @@ novel/                                    （这个目录建议 git init 并提�
 
 | 检查档位 | 用在 | 做什么 |
 | --- | --- | --- |
-| `QC_FULL` | 卷首卷末、大兑现、转折章 | 预筛 + sepia 架构诊断 + 朱雀 + 一致性 + 连载体检 + 复审到收敛 |
-| `QC_CHECK` | 常规章 | 预筛 + sepia 架构诊断 + 一致性自检 + 连载体检 |
+| `QC_FULL` | 卷首卷末、大兑现、转折章 | 预筛 + sepia 架构诊断 + 朱雀 + 跨章一致性 + 连载体检 + 复审到收敛 |
+| `QC_CHECK` | 常规章 | 预筛 + sepia 架构诊断 + 跨章一致性 + 连载体检 |
 | `QC_SKIP` | 过渡章、赶路章 | 本地三项脚本照跑，朱雀攒几章一起测（sepia 照跑，过渡章大量维度 n/a 属正常） |
 
 > **sepia 架构诊断不分档位、每章必跑**（作者 2026-10-15 改：原为 QC_FULL 必跑 + 常规章每 3-5 章一次，
@@ -216,7 +216,7 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
    - **禁止矛盾**：把世界观"禁止矛盾清单"逐条字面搜一遍
    - **钩子轮换**：本章钩子类型是否与最近 2 章重复
 5. **跑检测**
-   - 先确认脚本可用：`python <skill-directory>/scripts/selftest.py`（自检应全绿）
+   - 脚本可用性：`python <skill-directory>/scripts/selftest.py`（怀疑脚本出问题时跑，正常每章不必重复跑——312 项自检的开销留给排障用，见文件索引）
    - 单章：`python <skill-directory>/scripts/style_audit.py <章节文件> --blacklist <skill-directory>/references/ai-flavor-blacklist.md`
      - 自动读 `novel/world/世界观.md` 的**禁止矛盾清单**做字面搜（`--forbidden` 换路径，`--no-forbidden` 关掉）
      - 角色声纹：加 `--fingerprint novel/characters/角色-<名>.md`
