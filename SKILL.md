@@ -215,6 +215,7 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
    - **知识边界**：角色只说他知道的事（对照角色档案的知识台账）
    - **禁止矛盾**：把世界观"禁止矛盾清单"逐条字面搜一遍
    - **钩子轮换**：本章钩子类型是否与最近 2 章重复
+   - **人工判断项（每章必过，AI 代跑）**：按 `references/manual-review-checklist.md` **A 组 ★ 必过项逐条过**——信息去重、旁白解释动机/解释性内心独白、知识边界、概述替代场景、只传递信息的对话、语气像不像那个人、视角一致性、场景切入方式等；发现问题**当场修**（删/改/重写），修完重跑本步脚本。这是脚本与 sepia 都查不了的句子级缝隙，**不许跳过、不许只报"无问题"**——清单条目逐条过，报告里写明过了哪些条
 5. **跑检测**
    - 脚本可用性：`python <skill-directory>/scripts/selftest.py`（怀疑脚本出问题时跑，正常每章不必重复跑——312 项自检的开销留给排障用，见文件索引）
    - 单章：`python <skill-directory>/scripts/style_audit.py <章节文件> --blacklist <skill-directory>/references/ai-flavor-blacklist.md`
@@ -324,7 +325,7 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
 
 **完整清单见 `references/manual-review-checklist.md`**：我们原有 9 条 ＋ InkOS 33 维度合并版，
 分 A-F 六组、标明 ★ 必过项，并注出**哪些维度脚本已经在管**（避免重复劳动）。
-`QC_FULL` 按它逐条过；**常规章只过标 ★ 的**。最容易漏的四条先记在这里：
+`QC_FULL` 按它逐条过；**常规章只过标 ★ 的**（A 组 ★ 必过项**每章 AI 代跑**，入口在第三步 step4 一致性自检）。最容易漏的四条先记在这里：
 
 - ★ **信息去重**：同一个事实最多出现在"对话 / 内心 / 记录"三者中的**两处**，绝不三处都写
 - ★ **知识边界**：角色只说他知道的事（对照角色档案的知识台账——脚本只查字段，不判语义）
@@ -388,7 +389,7 @@ BurstCV ≥0.40 ｜ σ² ≥8 ｜ ParaCV ≥0.30 ｜ MATTR ≥0.40 ｜ 3-gram �
 | `scripts/stress_test.py` | **改完脚本后跑一次**：455 章/百万字规模下验证不崩不变慢（开发期用，不是每章跑） |
 | `scripts/index_search.py` | 要查「这个词/这个人出现在哪几章」时（`build` 建索引 → `find`/`who`）；**它只是缓存，门禁不读它** |
 | `references/skill-maintenance.md` | 检查报异常、要判断"改脚本还是改正文"时；**硬性要求**的执行细则 |
-| `references/manual-review-checklist.md` | `QC_FULL` 逐条过人工复核项时 |
+| `references/manual-review-checklist.md` | **A 组 ★ 必过项每章 AI 代跑**（第三步 step4 一致性自检）；`QC_FULL` 逐条全过 |
 | `references/completion-checklist.md` | **完结 / 收尾阶段**：确认收到总纲写死的结局、悬念全揭、伏笔清零、封版打 tag |
 | `references/mid-book-intake.md` | **半本书才开始用**这套技能、要给已有章节逆向建档时 |
 | `scripts/quote_check.py` | 审查报告要交付前：核验报告里的引文真的出自正文 |
