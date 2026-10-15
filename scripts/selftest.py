@@ -1825,6 +1825,41 @@ def main() -> int:
         check("接入文档引用的 sepia 文件路径与实际一致",
               not missing_refs, f"文档缺这些引用: {missing_refs}")
 
+    print("[41] 角色名起句豁免「重复开头」（作者 2026-10-15 决策 B058）")
+    # 背景：第二章重写时，"楚倾月"作句首 6 次→4 次仍报（阈值 v>=3）。
+    # 之前用"全部改'她'"让正文迁就脚本；作者明确"角色名这一块不用去替换"——
+    # 角色密集场景里人名反复起句是自然行文，不该由脚本强制换代词。
+    # 修法：analyse 接受 char_names，句首前缀匹配已知角色名的句子不计入重复统计；
+    # 不传 char_names 时维持旧行为。普通词/代词起句照旧查。
+    name_text = ("楚倾月端坐在蒲团上。楚倾月把茶盏放回案上。"
+                 "楚倾月垂着眼，指尖在茶盖上叩了一下。楚倾月看了他一眼。")
+    r_old = style_audit.analyse(name_text, blacklist)
+    hard_old, _, _ = style_audit.judge(r_old)
+    check("不传 char_names：人名起句 ×4 仍报「重复开头」（旧行为保留）",
+          any("重复开头" in x for x in hard_old), f"{hard_old}")
+    r_new = style_audit.analyse(name_text, blacklist, char_names=["楚倾月"])
+    hard_new, _, _ = style_audit.judge(r_new)
+    check("传 char_names：角色名起句 ×4 不再报（正文可以正常写人名）",
+          not any("重复开头" in x for x in hard_new), f"{hard_new}")
+    func_text = ("他说，今天先到这里，都散了吧。他说，不用再提。他说，天不早了。他说，走。")
+    r_fn = style_audit.analyse(func_text, blacklist, char_names=["楚倾月"])
+    hard_fn, _, _ = style_audit.judge(r_fn)
+    check("豁免只针对角色名：普通词「然而」起句 ×4 照旧报",
+          any("重复开头" in x for x in hard_fn), f"{hard_fn}")
+    with tempfile.TemporaryDirectory() as tmp:
+        proot = Path(tmp) / "novel"
+        (proot / "characters").mkdir(parents=True)
+        (proot / "characters" / "角色-楚倾月.md").write_text("", encoding="utf-8")
+        (proot / "characters" / "主角-岚云.md").write_text("", encoding="utf-8")
+        ch = proot / "chapters" / "第2章.md"
+        ch.parent.mkdir()
+        ch.write_text("", encoding="utf-8")
+        names = style_audit.discover_char_names([ch])
+        check("discover_char_names：从项目 characters/ 目录提取角色名（含主角）",
+              names == ["岚云", "楚倾月"], f"{names}")
+        check("discover_char_names：B 级路人无档案则不进名单",
+              "路人甲" not in names, f"{names}")
+
     # 自检项数被 README 两处写死；数字一变文档就会过期。
     # 注意顺序：这一项必须在**所有检查都跑完之后**才算，因为它断言的正是最终总数
     # （`checks` 计数器是边跑边加的，写在上面的断言会把自己也数进去，永远差 1）。

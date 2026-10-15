@@ -419,7 +419,8 @@ def window_pass(sentences: list[str]) -> tuple[float, int, list[dict]]:
 
 def analyse(text: str, blacklist: list[str],
             forbidden: list[str] | None = None,
-            fingerprints: dict[str, list[str]] | None = None) -> dict:
+            fingerprints: dict[str, list[str]] | None = None,
+            char_names: list[str] | None = None) -> dict:
     body = body_text(text)
     stream = char_stream(body)
     total_chars = len(stream)
@@ -521,8 +522,13 @@ def analyse(text: str, blacklist: list[str],
     openers: dict[str, int] = {}
     for s in sentences:
         key = OPENER_RE.sub("", s)[:3]
-        if len(key) >= 2:
-            openers[key] = openers.get(key, 0) + 1
+        if len(key) < 2:
+            continue
+        # 角色名起句是自然行文（作者 2026-10-15 决策，B058）：角色密集场景里
+        # "楚倾月X"反复作句首很正常，不再判为"重复开头"。普通词/代词起句照旧查。
+        if char_names and any(key.startswith(n) for n in char_names if len(n) >= 2):
+            continue
+        openers[key] = openers.get(key, 0) + 1
     repeated = sorted(((k, v) for k, v in openers.items() if v >= 3), key=lambda kv: -kv[1])
 
     same_len_run, same_len_start = longest_same_len_run(lengths)
@@ -1102,6 +1108,28 @@ def novel_root_of(start: Path) -> Path | None:
     return None
 
 
+def discover_char_names(targets: list[Path]) -> list[str]:
+    """从项目 characters/ 目录收集已知角色名（用于豁免"角色名起句"）。
+
+    只扫 `主角-*.md` / `角色-*.md` 档案文件名（char_name_from_path 同口径）；
+    B 级路人没档案，不豁免——路人名起句重复照报。返回空列表时维持旧行为
+    （人名起句 ≥3 次仍报"重复开头"）。
+    """
+    names: set[str] = set()
+    for t in targets:
+        root = novel_root_of(t)
+        if root is None:
+            continue
+        cdir = root / "characters"
+        if not cdir.is_dir():
+            continue
+        for f in cdir.glob("*.md"):
+            nm = char_name_from_path(f)
+            if nm:
+                names.add(nm)
+    return sorted(names)
+
+
 def find_forbidden_near(start_dirs: list[Path]) -> Path | None:
     r"""按项目布局找回 world/世界观.md：从待审章节所在目录逐级往上找。
 
@@ -1176,6 +1204,9 @@ def main(argv: list[str] | None = None) -> int:
     blacklist = load_blacklist(Path(args.blacklist) if args.blacklist else None)
     fingerprints = load_fingerprints([Path(p) for p in args.fingerprint])
     declared_chars = load_declared_characters(Path(args.node) if args.node else None)
+    # 已知角色名 = --fingerprint 档案名 + 项目 characters/ 目录扫描（兜底）。
+    # 用途：豁免"角色名起句"的重复开头判定（B058），正文可以正常写人名。
+    char_names = sorted(set(discover_char_names(targets)) | set(fingerprints.keys()))
 
     style_ref = None
     style_ref_name = ""
@@ -1271,14 +1302,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         compare_name = cp.name
         compare_ref = analyse(cp.read_text(encoding="utf-8-sig", errors="replace"),
-                              blacklist, forbidden, fingerprints)
+                              blacklist, forbidden, fingerprints, char_names)
         compare_old_hard, _, _ = judge(compare_ref, baseline, False, bands)
 
     results = {}
     failed = False
     for path in targets:
         text = path.read_text(encoding="utf-8-sig", errors="replace")
-        r = analyse(text, blacklist, forbidden, fingerprints)
+        r = analyse(text, blacklist, forbidden, fingerprints, char_names)
         hard, soft, drift = judge(r, baseline, check_fp, bands, args.explain_drift)
         soft += check_fingerprint_coverage(declared_chars, fingerprints)
         results[str(path)] = {"metrics": r, "hard": hard, "soft": soft, "drift": drift}
