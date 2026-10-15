@@ -45,8 +45,8 @@ cp -r novel-serialization .agents/skills/
 | --- | --- |
 | `init_novel.py` | 开书：生成 `novel/` 骨架（10 个文件） |
 | `style_audit.py` | 每章定稿：黑名单/配额/句长波动/词汇丰富度/节奏窗口/文风漂移/**参照文本双边比对**/**改稿前后护栏** |
-| `series_audit.py` | 每 3-5 章：伏笔超期与算术、钩子轮换、爽点断档、支线出勤、倒计时、**方向跑偏**（主线断档/主角消失/卷节拍对账）、字数遥测 |
-| `continuity_check.py` | 跨章一致性：逐字重复、微动作刷屏、称呼契约、档案细节落地、节点字段、**写前加载留痕** |
+| `series_audit.py` | 每章：伏笔超期与算术、钩子轮换、爽点断档、支线出勤、倒计时、**方向跑偏**（主线断档/主角消失/卷节拍对账）、字数遥测 |
+| `continuity_check.py` | 每章：跨章一致性——逐字重复、微动作刷屏、称呼契约、档案细节落地、节点字段、**写前加载留痕** |
 | `quote_check.py` | 审查报告的**引文核验闸门**：报告里引用的原文必须能在正文里字面搜到 |
 | `index_search.py` | 章节索引（SQLite+FTS5 trigram）：`build` / `find` / `who` / `verify` / **`brief`（写前简报）** / `stats` |
 | `selftest.py` | 312 项自检 |
